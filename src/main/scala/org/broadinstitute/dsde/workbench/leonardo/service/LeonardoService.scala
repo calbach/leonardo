@@ -240,7 +240,7 @@ class LeonardoService(protected val dataprocConfig: DataprocConfig,
       _ <- addDataprocWorkerRoleToServiceAccount(googleProject, serviceAccountInfo.clusterServiceAccount)
       // Create the bucket in leo's google project and populate with initialization files.
       // ACLs are granted so the cluster service account can access the bucket at initialization time.
-      initBucketPath <- initializeBucket(googleProject, clusterName, initBucketName, clusterRequest, serviceAccountInfo, serviceAccountKeyOpt)
+      initBucketPath <- initializeBucket(userEmail, googleProject, clusterName, initBucketName, clusterRequest, serviceAccountInfo, serviceAccountKeyOpt)
       // Once the bucket is ready, build the cluster
       cluster <- gdDAO.createCluster(userEmail, googleProject, clusterName, clusterRequest, initBucketName, serviceAccountInfo).andThen { case Failure(_) =>
         // If cluster creation fails, delete the init bucket asynchronously
@@ -289,19 +289,19 @@ class LeonardoService(protected val dataprocConfig: DataprocConfig,
   }
 
   /* Create a google bucket and populate it with init files */
-  private[service] def initializeBucket(googleProject: GoogleProject, clusterName: ClusterName, bucketName: GcsBucketName, clusterRequest: ClusterRequest, serviceAccountInfo: ServiceAccountInfo, notebookServiceAccountKeyOpt: Option[ServiceAccountKey]): Future[GcsBucketName] = {
+  private[service] def initializeBucket(userEmail: WorkbenchEmail, googleProject: GoogleProject, clusterName: ClusterName, bucketName: GcsBucketName, clusterRequest: ClusterRequest, serviceAccountInfo: ServiceAccountInfo, notebookServiceAccountKeyOpt: Option[ServiceAccountKey]): Future[GcsBucketName] = {
     for {
       // Note the bucket is created in Leo's project, not the cluster's project.
       // ACLs are granted so the cluster's service account can access the bucket at initialization time.
       _ <- gdDAO.createBucket(dataprocConfig.leoGoogleProject, googleProject, bucketName, serviceAccountInfo)
-      _ <- initializeBucketObjects(googleProject, clusterName, bucketName, clusterRequest, notebookServiceAccountKeyOpt)
+      _ <- initializeBucketObjects(userEmail, googleProject, clusterName, bucketName, clusterRequest, notebookServiceAccountKeyOpt)
     } yield { bucketName }
   }
 
   /* Process the templated cluster init script and put all initialization files in the init bucket */
-  private[service] def initializeBucketObjects(googleProject: GoogleProject, clusterName: ClusterName, bucketName: GcsBucketName, clusterRequest: ClusterRequest, serviceAccountKey: Option[ServiceAccountKey]): Future[Unit] = {
+  private[service] def initializeBucketObjects(userEmail: WorkbenchEmail, googleProject: GoogleProject, clusterName: ClusterName, bucketName: GcsBucketName, clusterRequest: ClusterRequest, serviceAccountKey: Option[ServiceAccountKey]): Future[Unit] = {
     // Build a mapping of (name, value) pairs with which to apply templating logic to resources
-    val replacements: Map[String, JsValue] = ClusterInitValues(googleProject, clusterName, bucketName, clusterRequest, dataprocConfig,
+    val replacements: Map[String, JsValue] = ClusterInitValues(userEmail, googleProject, clusterName, bucketName, clusterRequest, dataprocConfig,
       clusterFilesConfig, clusterResourcesConfig, proxyConfig, swaggerConfig, serviceAccountKey
     ).toJson.asJsObject.fields
 
