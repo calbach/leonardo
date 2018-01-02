@@ -123,7 +123,7 @@ class LeonardoService(protected val dataprocConfig: DataprocConfig,
           // Create the cluster in Google
           (cluster, initBucket, serviceAccountKeyOpt) <- createGoogleCluster(userEmail, serviceAccountInfo, googleProject, clusterName, augmentedClusterRequest)
           // Save the cluster in the database
-          savedCluster <- dbRef.inTransaction(_.clusterQuery.save(cluster, GcsPath(initBucket, GcsRelativePath("")), serviceAccountKeyOpt.map(_.id), clusterRequest.googleClientId))
+          savedCluster <- dbRef.inTransaction(_.clusterQuery.save(cluster, GcsPath(initBucket, GcsRelativePath("")), serviceAccountKeyOpt.map(_.id)))
         } yield {
           // Notify the cluster monitor that the cluster has been created
           clusterMonitorSupervisor ! ClusterCreated(savedCluster)
@@ -302,7 +302,7 @@ class LeonardoService(protected val dataprocConfig: DataprocConfig,
   private[service] def initializeBucketObjects(userEmail: WorkbenchEmail, googleProject: GoogleProject, clusterName: ClusterName, bucketName: GcsBucketName, clusterRequest: ClusterRequest, serviceAccountKey: Option[ServiceAccountKey]): Future[Unit] = {
     // Build a mapping of (name, value) pairs with which to apply templating logic to resources
     val replacements: Map[String, JsValue] = ClusterInitValues(userEmail, googleProject, clusterName, bucketName, clusterRequest, dataprocConfig,
-      clusterFilesConfig, clusterResourcesConfig, proxyConfig, swaggerConfig, serviceAccountKey
+      clusterFilesConfig, clusterResourcesConfig, proxyConfig, serviceAccountKey
     ).toJson.asJsObject.fields
 
     // Raw files to upload to the bucket, no additional processing needed.

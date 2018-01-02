@@ -55,10 +55,6 @@ case class InstanceName(string: String) extends AnyVal with StringValueClass {
 
 case class ClusterResource(string: String) extends AnyVal with StringValueClass
 
-case class GoogleClientId(string: String) extends AnyVal with StringValueClass {
-  override def productPrefix: String = "Google Client ID "
-}
-
 object StringValueClass {
   type LabelMap = Map[String, String]
 }
@@ -225,8 +221,7 @@ case class ServiceAccountInfo(clusterServiceAccount: Option[WorkbenchEmail],
 case class ClusterRequest(bucketPath: GcsBucketName,
                           labels: LabelMap,
                           jupyterExtensionUri: Option[GcsPath] = None,
-                          machineConfig: Option[MachineConfig] = None,
-                          googleClientId: Option[GoogleClientId] = None
+                          machineConfig: Option[MachineConfig] = None
                          )
 
 case class ClusterErrorDetails(code: Int, message: Option[String])
@@ -235,7 +230,7 @@ object ClusterInitValues {
   val serviceAccountCredentialsFilename = "service-account-credentials.json"
 
   def apply(userEmail: WorkbenchEmail, googleProject: GoogleProject, clusterName: ClusterName, bucketName: GcsBucketName, clusterRequest: ClusterRequest, dataprocConfig: DataprocConfig,
-            clusterFilesConfig: ClusterFilesConfig, clusterResourcesConfig: ClusterResourcesConfig, proxyConfig: ProxyConfig, swaggerConfig: SwaggerConfig,
+            clusterFilesConfig: ClusterFilesConfig, clusterResourcesConfig: ClusterResourcesConfig, proxyConfig: ProxyConfig,
             serviceAccountKey: Option[ServiceAccountKey]): ClusterInitValues =
     ClusterInitValues(
       googleProject.value,
@@ -254,7 +249,6 @@ object ClusterInitValues {
       serviceAccountKey.map(_ => GcsPath(bucketName, GcsRelativePath(serviceAccountCredentialsFilename)).toUri).getOrElse(""),
       GcsPath(bucketName, GcsRelativePath(clusterResourcesConfig.jupyterCustomJs.string)).toUri,
       GcsPath(bucketName, GcsRelativePath(clusterResourcesConfig.jupyterGoogleSignInJs.string)).toUri,
-      clusterRequest.googleClientId.getOrElse(swaggerConfig.googleClientId).string,
       userEmail.value
     )
 }
@@ -277,7 +271,6 @@ case class ClusterInitValues(googleProject: String,
                              jupyterServiceAccountCredentials: String,
                              jupyterCustomJsUri: String,
                              jupyterGoogleSignInJsUri: String,
-                             googleClientId: String,
                              googleLoginHint: String)
 
 
@@ -373,11 +366,10 @@ object LeonardoJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
   implicit val operationNameFormat = StringValueClassFormat(OperationName, OperationName.unapply)
   implicit val ipFormat = StringValueClassFormat(IP, IP.unapply)
   implicit val firewallRuleNameFormat = StringValueClassFormat(FirewallRuleName, FirewallRuleName.unapply)
-  implicit val googleClientIdFormat = StringValueClassFormat(GoogleClientId, GoogleClientId.unapply)
   implicit val machineConfigFormat = jsonFormat7(MachineConfig.apply)
   implicit val serviceAccountInfoFormat = jsonFormat2(ServiceAccountInfo.apply)
   implicit val clusterFormat = jsonFormat15(Cluster.apply)
-  implicit val clusterRequestFormat = jsonFormat5(ClusterRequest)
-  implicit val clusterInitValuesFormat = jsonFormat18(ClusterInitValues.apply)
+  implicit val clusterRequestFormat = jsonFormat4(ClusterRequest)
+  implicit val clusterInitValuesFormat = jsonFormat17(ClusterInitValues.apply)
   implicit val defaultLabelsFormat = jsonFormat7(DefaultLabels.apply)
 }

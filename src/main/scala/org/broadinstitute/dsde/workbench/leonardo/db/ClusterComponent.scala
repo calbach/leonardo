@@ -12,8 +12,6 @@ import org.broadinstitute.dsde.workbench.leonardo.model._
 import org.broadinstitute.dsde.workbench.model.WorkbenchEmail
 import org.broadinstitute.dsde.workbench.model.google.{GoogleProject, ServiceAccountKeyId}
 
-import scala.util.Random
-
 case class ClusterRecord(id: Long,
                          clusterName: String,
                          googleId: UUID,
@@ -27,7 +25,6 @@ case class ClusterRecord(id: Long,
                          destroyedDate: Timestamp,
                          jupyterExtensionUri: Option[String],
                          initBucket: String,
-                         googleClientId: Option[String],
                          machineConfig: MachineConfigRecord,
                          serviceAccountInfo: ServiceAccountInfoRecord)
 
@@ -72,7 +69,6 @@ trait ClusterComponent extends LeoComponent {
     def jupyterExtensionUri =         column[Option[String]]    ("jupyterExtensionUri",   O.Length(1024))
     def initBucket =                  column[String]            ("initBucket",            O.Length(1024))
     def serviceAccountKeyId =         column[Option[String]]    ("serviceAccountKeyId",   O.Length(254))
-    def googleClientId =              column[Option[String]]    ("googleClientId",        O.Length(254))
 
     def uniqueKey = index("IDX_CLUSTER_UNIQUE", (googleProject, clusterName), unique = true)
 
@@ -82,15 +78,15 @@ trait ClusterComponent extends LeoComponent {
     // So we split ClusterRecord into multiple case classes and bind them to slick in the following way.
     def * = (
       id, clusterName, googleId, googleProject, googleBucket, operationName, status, hostIp, creator,
-      createdDate, destroyedDate, jupyterExtensionUri, initBucket, googleClientId,
+      createdDate, destroyedDate, jupyterExtensionUri, initBucket,
       (numberOfWorkers, masterMachineType, masterDiskSize, workerMachineType, workerDiskSize, numberOfWorkerLocalSSDs, numberOfPreemptibleWorkers),
       (clusterServiceAccount, notebookServiceAccount, serviceAccountKeyId)
     ).shaped <> ({
       case (id, clusterName, googleId, googleProject, googleBucket, operationName, status, hostIp, creator,
-            createdDate, destroyedDate, jupyterExtensionUri, initBucket, googleClientId, machineConfig, serviceAccountInfo) =>
+            createdDate, destroyedDate, jupyterExtensionUri, initBucket, machineConfig, serviceAccountInfo) =>
         ClusterRecord(
           id, clusterName, googleId, googleProject, googleBucket, operationName, status, hostIp, creator,
-          createdDate, destroyedDate, jupyterExtensionUri, initBucket, googleClientId,
+          createdDate, destroyedDate, jupyterExtensionUri, initBucket,
           MachineConfigRecord.tupled.apply(machineConfig),
           ServiceAccountInfoRecord.tupled.apply(serviceAccountInfo))
     }, { c: ClusterRecord =>
@@ -98,7 +94,7 @@ trait ClusterComponent extends LeoComponent {
       def sa(_sa: ServiceAccountInfoRecord) = ServiceAccountInfoRecord.unapply(_sa).get
       Some((
         c.id, c.clusterName, c.googleId, c.googleProject, c.googleBucket, c.operationName, c.status, c.hostIp, c.creator,
-        c.createdDate, c.destroyedDate, c.jupyterExtensionUri, c.initBucket, c.googleClientId,
+        c.createdDate, c.destroyedDate, c.jupyterExtensionUri, c.initBucket,
         mc(c.machineConfig), sa(c.serviceAccountInfo)
       ))
     })
@@ -108,8 +104,8 @@ trait ClusterComponent extends LeoComponent {
 
     private final val dummyDate:Instant = Instant.ofEpochMilli(1000)
 
-    def save(cluster: Cluster, initBucket: GcsPath, serviceAccountKeyId: Option[ServiceAccountKeyId], googleClientId: Option[GoogleClientId]): DBIO[Cluster] = {
-      (clusterQuery returning clusterQuery.map(_.id) += marshalCluster(cluster, initBucket.toUri, serviceAccountKeyId, googleClientId)) flatMap { clusterId =>
+    def save(cluster: Cluster, initBucket: GcsPath, serviceAccountKeyId: Option[ServiceAccountKeyId]): DBIO[Cluster] = {
+      (clusterQuery returning clusterQuery.map(_.id) += marshalCluster(cluster, initBucket.toUri, serviceAccountKeyId)) flatMap { clusterId =>
         labelQuery.saveAllForCluster(clusterId, cluster.labels)
       } map { _ => cluster }
     }
@@ -193,15 +189,6 @@ trait ClusterComponent extends LeoComponent {
         .map { recs => recs.headOption.flatten.map(ServiceAccountKeyId(_)) }
     }
 
-    def getGoogleClientId(project: GoogleProject, name: ClusterName): DBIO[Option[GoogleClientId]] = {
-      clusterQuery
-        .filter { _.googleProject === project.value }
-        .filter { _.clusterName === name.string }
-        .map(_.googleClientId)
-        .result
-        .map { recs => recs.headOption.flatten.map(GoogleClientId(_)) }
-    }
-
     def markPendingDeletion(googleId: UUID): DBIO[Int] = {
       clusterQuery.filter(_.googleId === googleId)
         .map(c => (c.destroyedDate, c.status, c.hostIp))
@@ -262,7 +249,7 @@ trait ClusterComponent extends LeoComponent {
     /* WARNING: The init bucket and SA key ID is secret to Leo, which means we don't unmarshal it.
      * This function should only be called at cluster creation time, when the init bucket doesn't exist.
      */
-    private def marshalCluster(cluster: Cluster, initBucket: String, serviceAccountKeyId: Option[ServiceAccountKeyId], googleClientId: Option[GoogleClientId]): ClusterRecord = {
+    private def marshalCluster(cluster: Cluster, initBucket: String, serviceAccountKeyId: Option[ServiceAccountKeyId]): ClusterRecord = {
       ClusterRecord(
         id = 0,    // DB AutoInc
         cluster.clusterName.string,
@@ -277,7 +264,6 @@ trait ClusterComponent extends LeoComponent {
         Timestamp.from(cluster.destroyedDate.getOrElse(dummyDate)),
         cluster.jupyterExtensionUri map(_.toUri),
         initBucket,
-        googleClientId.map(_.string),
         MachineConfigRecord(
           cluster.machineConfig.numberOfWorkers.get,   //a cluster should always have numberOfWorkers defined
           cluster.machineConfig.masterMachineType.get, //a cluster should always have masterMachineType defined

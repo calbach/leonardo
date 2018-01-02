@@ -10,7 +10,7 @@ import com.typesafe.config.ConfigFactory
 import net.ceedubs.ficus.Ficus._
 import org.broadinstitute.dsde.workbench.google.gcs.{GcsBucketName, GcsPath, GcsRelativePath}
 import org.broadinstitute.dsde.workbench.google.mock.MockGoogleIamDAO
-import org.broadinstitute.dsde.workbench.leonardo.auth.{MockPetServiceAccountProvider, MockPetsPerProjectServiceAccountProvider, WhitelistAuthProvider}
+import org.broadinstitute.dsde.workbench.leonardo.auth.{MockPetsPerProjectServiceAccountProvider, WhitelistAuthProvider}
 import org.broadinstitute.dsde.workbench.leonardo.config.{ClusterDefaultsConfig, ClusterFilesConfig, ClusterResourcesConfig, DataprocConfig, ProxyConfig, SwaggerConfig}
 import org.broadinstitute.dsde.workbench.leonardo.dao.{CallToGoogleApiFailedException, MockGoogleDataprocDAO, MockSamDAO}
 import org.broadinstitute.dsde.workbench.leonardo.db.{DbSingleton, TestComponent}
@@ -34,10 +34,9 @@ class LeonardoServiceSpec extends TestKit(ActorSystem("leonardotest")) with Flat
   private val bucketPath = GcsBucketName("bucket-path")
   private val googleProject = GoogleProject("test-google-project")
   private val petServiceAccount = WorkbenchEmail("petSA@test-domain.iam.gserviceaccount.com")
-  private val googleClientId = GoogleClientId("test-google-client-id")
   private val clusterName = ClusterName("test-cluster")
   private val defaultUserInfo = UserInfo(OAuth2BearerToken("accessToken"), WorkbenchUserId("user1"), WorkbenchEmail("user1@example.com"), 0)
-  private lazy val testClusterRequest = ClusterRequest(bucketPath, Map("bam" -> "yes", "vcf" -> "no", "foo" -> "bar"), Some(gdDAO.extensionPath), None, Some(googleClientId))
+  private lazy val testClusterRequest = ClusterRequest(bucketPath, Map("bam" -> "yes", "vcf" -> "no", "foo" -> "bar"), Some(gdDAO.extensionPath))
   private lazy val singleNodeDefaultMachineConfig = MachineConfig(Some(clusterDefaultsConfig.numberOfWorkers), Some(clusterDefaultsConfig.masterMachineType), Some(clusterDefaultsConfig.masterDiskSize))
   private val serviceAccountKey = ServiceAccountKey(ServiceAccountKeyId("123"), ServiceAccountPrivateKeyData("abcdefg"), Some(Instant.now), Some(Instant.now.plusSeconds(300)))
 
@@ -355,7 +354,7 @@ class LeonardoServiceSpec extends TestKit(ActorSystem("leonardotest")) with Flat
 
   it should "template a script using config values" in isolatedDbTest {
     // Create replacements map
-    val replacements = ClusterInitValues(defaultUserInfo.userEmail, googleProject, clusterName, bucketPath, testClusterRequest, dataprocConfig, clusterFilesConfig, clusterResourcesConfig, proxyConfig, swaggerConfig, Some(serviceAccountKey)).toJson.asJsObject.fields
+    val replacements = ClusterInitValues(defaultUserInfo.userEmail, googleProject, clusterName, bucketPath, testClusterRequest, dataprocConfig, clusterFilesConfig, clusterResourcesConfig, proxyConfig, Some(serviceAccountKey)).toJson.asJsObject.fields
 
     // Each value in the replacement map will replace it's key in the file being processed
     val result = leo.templateResource(clusterResourcesConfig.initActionsScript, replacements)
@@ -375,29 +374,14 @@ class LeonardoServiceSpec extends TestKit(ActorSystem("leonardotest")) with Flat
 
   it should "template google_sign_in.js with config values" in isolatedDbTest {
     // Create replacements map
-    val replacements = ClusterInitValues(defaultUserInfo.userEmail, googleProject, clusterName, bucketPath, testClusterRequest, dataprocConfig, clusterFilesConfig, clusterResourcesConfig, proxyConfig, swaggerConfig, Some(serviceAccountKey)).toJson.asJsObject.fields
+    val replacements = ClusterInitValues(defaultUserInfo.userEmail, googleProject, clusterName, bucketPath, testClusterRequest, dataprocConfig, clusterFilesConfig, clusterResourcesConfig, proxyConfig, Some(serviceAccountKey)).toJson.asJsObject.fields
 
     // Each value in the replacement map will replace it's key in the file being processed
     val result = leo.templateResource(clusterResourcesConfig.jupyterGoogleSignInJs, replacements)
 
     // Check that the values in the bash script file were correctly replaced
     val expected =
-      s"""|"${testClusterRequest.googleClientId.get.string}"
-          |"${defaultUserInfo.userEmail.value}"""".stripMargin
-
-    result shouldEqual expected
-  }
-
-  it should "template google_sign_in.js with a default Google client id" in isolatedDbTest {
-    val replacements = ClusterInitValues(defaultUserInfo.userEmail, googleProject, clusterName, bucketPath, testClusterRequest.copy(googleClientId = None), dataprocConfig, clusterFilesConfig, clusterResourcesConfig, proxyConfig, swaggerConfig, Some(serviceAccountKey)).toJson.asJsObject.fields
-
-    // Each value in the replacement map will replace it's key in the file being processed
-    val result = leo.templateResource(clusterResourcesConfig.jupyterGoogleSignInJs, replacements)
-
-    // Check that the values in the bash script file were correctly replaced
-    val expected =
-      s"""|"${swaggerConfig.googleClientId.string}"
-          |"${defaultUserInfo.userEmail.value}"""".stripMargin
+      s""""${defaultUserInfo.userEmail.value}""""
 
     result shouldEqual expected
   }
@@ -523,13 +507,5 @@ class LeonardoServiceSpec extends TestKit(ActorSystem("leonardotest")) with Flat
     val badUserInfo = UserInfo(OAuth2BearerToken("accessToken"), WorkbenchUserId("badguy"), WorkbenchEmail("dont@whitelist.me"), 0)
     val authExc = leo.isWhitelisted(badUserInfo).failed.futureValue
     authExc shouldBe a [AuthorizationError]
-  }
-
-  it should "create a cluster with a custom Google client ID" in isolatedDbTest {
-    val googleClientId = GoogleClientId("my-custom-client-id")
-    val clusterRequestWithClientId = testClusterRequest.copy(googleClientId = Some(googleClientId))
-
-    val clusterCreateResponse = leo.createCluster(defaultUserInfo, googleProject, clusterName, clusterRequestWithClientId).futureValue
-    dbFutureValue { _.clusterQuery.getGoogleClientId(googleProject, clusterName) } shouldBe Some(googleClientId)
   }
 }
