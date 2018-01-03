@@ -30,6 +30,7 @@ trait ProxyRoutes extends UserInfoDirectives with CorsSupport { self: LazyLoggin
                 setTokenCookie(userInfo) {
                   complete {
                     logger.debug(s"Successfully set cookie for user $userInfo")
+                    println(s"Successfully set cookie for user $userInfo")
                     StatusCodes.OK
                   }
                 }
@@ -46,6 +47,7 @@ trait ProxyRoutes extends UserInfoDirectives with CorsSupport { self: LazyLoggin
           } ~
           pathPrefix(Segment / Segment) { (googleProject, clusterName) =>
             complete {
+              println("Proxying notebook connection")
               proxyService.proxyNotebook(userInfo, GoogleProject(googleProject), ClusterName(clusterName), request)
             }
           }
