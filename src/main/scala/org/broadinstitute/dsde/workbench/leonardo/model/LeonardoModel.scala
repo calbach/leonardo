@@ -229,9 +229,9 @@ case class ClusterErrorDetails(code: Int, message: Option[String])
 object ClusterInitValues {
   val serviceAccountCredentialsFilename = "service-account-credentials.json"
 
-  def apply(userEmail: WorkbenchEmail, googleProject: GoogleProject, clusterName: ClusterName, bucketName: GcsBucketName, clusterRequest: ClusterRequest, dataprocConfig: DataprocConfig,
+  def apply(googleProject: GoogleProject, clusterName: ClusterName, bucketName: GcsBucketName, clusterRequest: ClusterRequest, dataprocConfig: DataprocConfig,
             clusterFilesConfig: ClusterFilesConfig, clusterResourcesConfig: ClusterResourcesConfig, proxyConfig: ProxyConfig,
-            serviceAccountKey: Option[ServiceAccountKey]): ClusterInitValues =
+            serviceAccountKey: Option[ServiceAccountKey], userEmailLoginHint: WorkbenchEmail): ClusterInitValues =
     ClusterInitValues(
       googleProject.value,
       clusterName.string,
@@ -249,8 +249,7 @@ object ClusterInitValues {
       serviceAccountKey.map(_ => GcsPath(bucketName, GcsRelativePath(serviceAccountCredentialsFilename)).toUri).getOrElse(""),
       GcsPath(bucketName, GcsRelativePath(clusterResourcesConfig.jupyterCustomJs.string)).toUri,
       GcsPath(bucketName, GcsRelativePath(clusterResourcesConfig.jupyterGoogleSignInJs.string)).toUri,
-      userEmail.value,
-      proxyConfig.allowedOrigins
+      userEmailLoginHint.value
     )
 }
 
@@ -272,8 +271,7 @@ case class ClusterInitValues(googleProject: String,
                              jupyterServiceAccountCredentials: String,
                              jupyterCustomJsUri: String,
                              jupyterGoogleSignInJsUri: String,
-                             googleLoginHint: String,
-                             allowedOrigins: List[String])
+                             userEmailLoginHint: String)
 
 
 object FirewallRuleRequest {
@@ -372,6 +370,6 @@ object LeonardoJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
   implicit val serviceAccountInfoFormat = jsonFormat2(ServiceAccountInfo.apply)
   implicit val clusterFormat = jsonFormat15(Cluster.apply)
   implicit val clusterRequestFormat = jsonFormat4(ClusterRequest)
-  implicit val clusterInitValuesFormat = jsonFormat18(ClusterInitValues.apply)
+  implicit val clusterInitValuesFormat = jsonFormat17(ClusterInitValues.apply)
   implicit val defaultLabelsFormat = jsonFormat7(DefaultLabels.apply)
 }
