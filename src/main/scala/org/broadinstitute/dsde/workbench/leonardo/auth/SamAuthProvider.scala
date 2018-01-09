@@ -11,12 +11,12 @@ import net.ceedubs.ficus.Ficus._
 import io.swagger.client.ApiClient
 import io.swagger.client.Configuration
 import org.broadinstitute.dsde.workbench.leonardo.model.{LeoAuthProvider, NotebookClusterActions, ProjectActions, ServiceAccountProvider}
-import org.broadinstitute.dsde.workbench.model.{UserInfo, WorkbenchEmail}
+import org.broadinstitute.dsde.workbench.model.{UserInfo, WorkbenchEmail, WorkbenchUser}
 import io.swagger.client.api.ResourcesApi
 import org.broadinstitute.dsde.workbench.leonardo.model.NotebookClusterActions._
 import org.broadinstitute.dsde.workbench.leonardo.model.ProjectActions._
 import org.broadinstitute.dsde.workbench.leonardo.model.Actions._
-import org.broadinstitute.dsde.workbench.model.google.GoogleProject
+import org.broadinstitute.dsde.workbench.model.google.{GoogleProject, ServiceAccountKey}
 
 import scala.collection.JavaConverters._
 import java.io.File
@@ -44,9 +44,9 @@ class SamAuthProvider(authConfig: Config, serviceAccountProvider: ServiceAccount
     .expireAfterWrite(cacheExpiryTime, TimeUnit.MINUTES)
     .maximumSize(cacheMaxSize)
     .build(
-      new CacheLoader[WorkbenchEmail, String] {
-        def load(userEmail: WorkbenchEmail) = {
-          getPetAccessTokenFromSam(userEmail)
+      new CacheLoader[(GoogleProject, WorkbenchEmail), String] {
+        def load(projectAndEmail: (GoogleProject, WorkbenchEmail)): String = {
+          getPetAccessTokenFromSam(projectAndEmail._1, projectAndEmail._2)
         }
       }
     )
@@ -69,15 +69,16 @@ class SamAuthProvider(authConfig: Config, serviceAccountProvider: ServiceAccount
   }
 
   //"Slow" lookup of pet's access token. The cache calls this when it needs to.
-  private def getPetAccessTokenFromSam(userEmail: WorkbenchEmail): String = {
+  private def getPetAccessTokenFromSam(googleProject: GoogleProject, userEmail: WorkbenchEmail): String = {
     val samAPI = resourcesApi(getAccessTokenUsingCredential(leoEmail, leoPem))
-    val (petEmail, petKey): (WorkbenchEmail, File) = samAPI.gimmeThisUsersPetsKey(userEmail)
-    getAccessTokenUsingCredential(petEmail, petKey)
+    val petUser: WorkbenchUser = samAPI.gimmeThisUsersPetsEmail(googleProject, userEmail)
+    val petKey: ServiceAccountKey = samAPI.gimmeThisUsersPetsKey(googleProject, userEmail)
+    getAccessTokenUsingCredential(petUser.email, new java.io.File(petKey.privateKeyData.value))
   }
 
   //"Fast" lookup of pet's access token, using the cache.
-  private def getCachedPetAccessToken(userEmail: WorkbenchEmail): String = {
-    petTokenCache.get(userEmail)
+  private def getCachedPetAccessToken(googleProject: GoogleProject, userEmail: WorkbenchEmail): String = {
+    petTokenCache.get((googleProject, userEmail))
   }
 
   //A resources API if you already have a token
@@ -89,8 +90,8 @@ class SamAuthProvider(authConfig: Config, serviceAccountProvider: ServiceAccount
   }
 
   //A resources API as the given user's pet SA
-  private[auth] def resourcesApiAsPet(userEmail: WorkbenchEmail): ResourcesApi = {
-    resourcesApi(getCachedPetAccessToken(userEmail))
+  private[auth] def resourcesApiAsPet(userEmail: WorkbenchEmail, googleProject: GoogleProject): ResourcesApi = {
+    resourcesApi(getCachedPetAccessToken(googleProject, userEmail))
   }
 
   protected def getClusterResourceId(googleProject: String, clusterName: String): String = {
