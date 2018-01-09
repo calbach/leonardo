@@ -64,6 +64,7 @@ function startTimer() {
 }
 
 function set_cookie(token, expires_in) {
+    console.info("Setting cookie. token = " + token + ", expires_in = " + expires_in);
     var expiresDate = new Date();
     expiresDate.setSeconds(expiresDate.getSeconds() + expires_in);
     document.cookie = "LeoToken="+token+";secure;expires="+expiresDate.toUTCString()+";path=/";
