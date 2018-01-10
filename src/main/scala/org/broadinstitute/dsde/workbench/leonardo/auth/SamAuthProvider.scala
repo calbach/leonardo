@@ -1,6 +1,5 @@
 package org.broadinstitute.dsde.workbench.leonardo.auth
 
-import com.google.api.client.auth.oauth2.Credential
 import com.google.api.client.googleapis.auth.oauth2.GoogleCredential
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport
 import com.google.api.client.json.jackson2.JacksonFactory
@@ -9,7 +8,6 @@ import com.typesafe.config.Config
 import com.typesafe.scalalogging.LazyLogging
 import net.ceedubs.ficus.Ficus._
 import io.swagger.client.ApiClient
-import io.swagger.client.Configuration
 import org.broadinstitute.dsde.workbench.leonardo.model.{LeoAuthProvider, NotebookClusterActions, ProjectActions, ServiceAccountProvider}
 import org.broadinstitute.dsde.workbench.model.{UserInfo, WorkbenchEmail, WorkbenchUser}
 import io.swagger.client.api.ResourcesApi
@@ -17,9 +15,10 @@ import org.broadinstitute.dsde.workbench.leonardo.model.NotebookClusterActions._
 import org.broadinstitute.dsde.workbench.leonardo.model.ProjectActions._
 import org.broadinstitute.dsde.workbench.leonardo.model.Actions._
 import org.broadinstitute.dsde.workbench.model.google.{GoogleProject, ServiceAccountKey}
+import com.google.auth.oauth2.ServiceAccountCredentials
 
 import scala.collection.JavaConverters._
-import java.io.File
+import java.io.{ByteArrayInputStream, File}
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 
@@ -54,8 +53,8 @@ class SamAuthProvider(authConfig: Config, serviceAccountProvider: ServiceAccount
   //Leo SA details -- needed to get pet keyfiles
   val (leoEmail, leoPem) : (WorkbenchEmail, File) = serviceAccountProvider.getLeoServiceAccountAndKey
 
-  //Given some credentials, gets an access token
-  private def getAccessTokenUsingCredential(email: WorkbenchEmail, pem: File): String = {
+  //Given a pem, gets an access token
+  private def getAccessTokenUsingPem(email: WorkbenchEmail, pem: File): String = {
     val credential = new GoogleCredential.Builder()
       .setTransport(httpTransport)
       .setJsonFactory(jsonFactory)
@@ -68,12 +67,21 @@ class SamAuthProvider(authConfig: Config, serviceAccountProvider: ServiceAccount
     credential.getAccessToken
   }
 
+  //Given some JSON, gets an access token
+  private def getAccessTokenUsingJson(saKey: ServiceAccountKey) : String = {
+    val keyStream = new ByteArrayInputStream(saKey.privateKeyData.value.getBytes)
+    val credential = ServiceAccountCredentials.fromStream(keyStream)
+      .createScoped(saScopes.asJava)
+
+    credential.refreshAccessToken.getTokenValue
+  }
+
   //"Slow" lookup of pet's access token. The cache calls this when it needs to.
   private def getPetAccessTokenFromSam(googleProject: GoogleProject, userEmail: WorkbenchEmail): String = {
-    val samAPI = resourcesApi(getAccessTokenUsingCredential(leoEmail, leoPem))
+    val samAPI = resourcesApi(getAccessTokenUsingPem(leoEmail, leoPem))
     val petUser: WorkbenchUser = samAPI.gimmeThisUsersPetsEmail(googleProject, userEmail)
     val petKey: ServiceAccountKey = samAPI.gimmeThisUsersPetsKey(googleProject, userEmail)
-    getAccessTokenUsingCredential(petUser.email, new java.io.File(petKey.privateKeyData.value))
+    getAccessTokenUsingJson(petKey)
   }
 
   //"Fast" lookup of pet's access token, using the cache.
