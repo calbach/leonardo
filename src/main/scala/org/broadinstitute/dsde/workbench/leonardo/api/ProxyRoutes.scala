@@ -28,15 +28,17 @@ trait ProxyRoutes extends UserInfoDirectives with CorsSupport { self: LazyLoggin
           val googleProject = GoogleProject(googleProjectParam)
           val clusterName = ClusterName(clusterNameParam)
 
-          path("setCookie") {
+          (path("setCookie") & parameter('redirect?)) { redirectParam =>
             extractUserInfo { userInfo =>
               get {
                 // Check the user for ConnectToCluster privileges and set a cookie in the response
                 onSuccess(proxyService.authCheck(userInfo, googleProject, clusterName, ConnectToCluster)) {
                   setTokenCookie(userInfo) {
-                    complete {
-                      logger.debug(s"Successfully set cookie for user $userInfo")
-                      StatusCodes.OK
+                    logger.debug(s"Successfully set cookie for user $userInfo")
+                    if (redirectParam.isDefined) {
+                      redirect(s"/notebooks/$googleProjectParam/$clusterNameParam", StatusCodes.Found)
+                    } else {
+                      complete(StatusCodes.OK)
                     }
                   }
                 }

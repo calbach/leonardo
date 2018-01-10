@@ -222,6 +222,19 @@ class ProxyRoutesSpec extends FlatSpec with Matchers with BeforeAndAfterAll with
     }
   }
 
+  it should "redirect if the redirect param is specified" in {
+    List("redirect", "redirect=true", "redirect=foo", "foo=bar&redirect").foreach { param =>
+      Get(s"/notebooks/$googleProject/$clusterName/setCookie?$param")
+        .addHeader(Authorization(OAuth2BearerToken(tokenCookie.value)))
+        .addHeader(Origin("http://example.com"))  ~> leoRoutes.route ~> check {
+        handled shouldBe true
+        status shouldEqual StatusCodes.Found
+        header[`Set-Cookie`] shouldBe 'defined
+        header[`Location`] shouldBe Some(`Location`(s"/notebooks/$googleProject/$clusterName"))
+      }
+    }
+  }
+
   "invalidateToken" should "remove a token from cache" in {
     // cache should not initially contain the token
     proxyService.googleTokenCache.asMap().containsKey(tokenCookie.value) shouldBe false
