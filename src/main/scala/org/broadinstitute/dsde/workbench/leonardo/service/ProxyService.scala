@@ -23,6 +23,7 @@ import org.broadinstitute.dsde.workbench.leonardo.model._
 import org.broadinstitute.dsde.workbench.leonardo.model.NotebookClusterActions._
 import org.broadinstitute.dsde.workbench.model.UserInfo
 import org.broadinstitute.dsde.workbench.model.google.GoogleProject
+import org.reactivestreams.{Publisher, Subscriber}
 
 import scala.collection.immutable
 import scala.concurrent.duration._
@@ -180,7 +181,10 @@ class ProxyService(proxyConfig: ProxyConfig,
 
     // Initialize a Flow for the WebSocket conversation.
     // `Message` is the root of the ADT for WebSocket messages. A Message may be a TextMessage or a BinaryMessage.
-    val flow = Flow.fromSinkAndSourceMat(Sink.asPublisher[Message](fanout = false), Source.asSubscriber[Message])(Keep.both)
+    val flow = Flow.fromSinkAndSourceMat(Sink.asPublisher[Message](fanout = false), Source.asSubscriber[Message])(Keep.both) map { msg =>
+      logger.debug(s"Got websocket message $msg")
+      msg
+    }
 
     // Make a single WebSocketRequest to the notebook server, passing in our Flow. This returns a Future[WebSocketUpgradeResponse].
     // Keep our publisher/subscriber (e.g. sink/source) for use later. These are returned because we specified Keep.both above.
