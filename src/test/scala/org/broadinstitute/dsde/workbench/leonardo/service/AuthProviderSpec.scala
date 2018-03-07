@@ -75,6 +75,7 @@ class AuthProviderSpec extends FreeSpec with ScalatestRouteTest with Matchers wi
     jupyterExtensionUri = None,
     jupyterUserScriptUri = None,
     stagingBucket = Some(GcsBucketName("testStagingBucket1")),
+    List.empty,
     Set.empty
   )
 
